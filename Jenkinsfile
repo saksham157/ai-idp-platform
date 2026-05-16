@@ -4,6 +4,8 @@ pipeline {
 
         kubernetes {
 
+            defaultContainer 'docker'
+
             yaml """
 
 apiVersion: v1
@@ -42,7 +44,7 @@ spec:
 
     environment {
 
-        IMAGE_NAME = "YOUR_DOCKERHUB_USERNAME/ai-idp-platform"
+        IMAGE_NAME = "saksham157/ai-idp-platform"
 
         IMAGE_TAG = "latest"
     }
@@ -61,12 +63,9 @@ spec:
 
             steps {
 
-                container('docker') {
+                sh 'docker version'
 
-                    sh 'docker version'
-
-                    sh 'docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .'
-                }
+                sh 'docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .'
             }
         }
 
@@ -74,21 +73,18 @@ spec:
 
             steps {
 
-                container('docker') {
+                withCredentials([
+                    usernamePassword(
 
-                    withCredentials([
-                        usernamePassword(
+                        credentialsId: 'dockerhub-creds',
 
-                            credentialsId: 'dockerhub-creds',
+                        usernameVariable: 'DOCKER_USER',
 
-                            usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )
+                ]) {
 
-                            passwordVariable: 'DOCKER_PASS'
-                        )
-                    ]) {
-
-                        sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
-                    }
+                    sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
                 }
             }
         }
@@ -97,10 +93,7 @@ spec:
 
             steps {
 
-                container('docker') {
-
-                    sh 'docker push ${IMAGE_NAME}:${IMAGE_TAG}'
-                }
+                sh 'docker push ${IMAGE_NAME}:${IMAGE_TAG}'
             }
         }
     }
