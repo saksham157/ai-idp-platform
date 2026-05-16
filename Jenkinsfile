@@ -44,7 +44,7 @@ spec:
 
     environment {
 
-        IMAGE_NAME = "saksham157/ai-idp-platform"
+        IMAGE_NAME = "saksham8000/ai-idp-platform"
 
         IMAGE_TAG = "latest"
     }
