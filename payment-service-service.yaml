@@ -1,9 +1,0 @@
-service_name: payment-service
-
-team_name: payments
-
-runtime: nodejs
-
-pipeline:
-
-  dockerBuild: true
