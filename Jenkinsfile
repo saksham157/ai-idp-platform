@@ -1,10 +1,48 @@
 pipeline {
 
-    agent any
+    agent {
+
+        kubernetes {
+
+            yaml """
+
+apiVersion: v1
+kind: Pod
+
+spec:
+
+  containers:
+
+    - name: docker
+
+      image: docker:27.0.3
+
+      command:
+        - cat
+
+      tty: true
+
+      volumeMounts:
+
+        - name: docker-sock
+
+          mountPath: /var/run/docker.sock
+
+  volumes:
+
+    - name: docker-sock
+
+      hostPath:
+
+        path: /var/run/docker.sock
+
+"""
+        }
+    }
 
     environment {
 
-        IMAGE_NAME = "saksham157/ai-idp-platform"
+        IMAGE_NAME = "YOUR_DOCKERHUB_USERNAME/ai-idp-platform"
 
         IMAGE_TAG = "latest"
     }
@@ -19,41 +57,50 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Docker Build') {
 
             steps {
 
-                script {
+                container('docker') {
 
-                    docker.build("${IMAGE_NAME}:${IMAGE_TAG}")
+                    sh 'docker version'
+
+                    sh 'docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .'
                 }
             }
         }
 
-        stage('Push Docker Image') {
+        stage('Docker Login') {
 
             steps {
 
-                script {
+                container('docker') {
 
-                    docker.withRegistry(
-                        'https://index.docker.io/v1/',
-                        'dockerhub-creds'
-                    ) {
+                    withCredentials([
+                        usernamePassword(
 
-                        docker.image("${IMAGE_NAME}:${IMAGE_TAG}").push()
+                            credentialsId: 'dockerhub-creds',
+
+                            usernameVariable: 'DOCKER_USER',
+
+                            passwordVariable: 'DOCKER_PASS'
+                        )
+                    ]) {
+
+                        sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
                     }
                 }
             }
         }
 
-        stage('Deploy To Kubernetes') {
+        stage('Push Image') {
 
             steps {
 
-                sh 'kubectl apply -f kubernetes/deployment.yaml'
+                container('docker') {
 
-                sh 'kubectl apply -f kubernetes/service.yaml'
+                    sh 'docker push ${IMAGE_NAME}:${IMAGE_TAG}'
+                }
             }
         }
     }
