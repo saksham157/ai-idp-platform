@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: ai-idp-platform
+  namespace: platform-system
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: ai-idp-platform
+
+  template:
+    metadata:
+      labels:
+        app: ai-idp-platform
+
+    spec:
+      containers:
+
+        - name: ai-idp-platform
+
+          image: YOUR_DOCKERHUB_USERNAME/ai-idp-platform:latest
+
+          ports:
+            - containerPort: 8000
+
+          env:
+            - name: DATABASE_URL
+              value: "postgresql://platform:platform123@postgres-service.platform-system.svc.cluster.local:5432/platformdb"
