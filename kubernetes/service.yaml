@@ -1,34 +1,17 @@
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: v1
+kind: Service
 
 metadata:
-  name: ai-idp-platform
+  name: ai-idp-platform-service
   namespace: platform-system
 
 spec:
-  replicas: 1
+  type: NodePort
 
   selector:
-    matchLabels:
-      app: ai-idp-platform
+    app: ai-idp-platform
 
-  template:
-    metadata:
-      labels:
-        app: ai-idp-platform
-
-    spec:
-      containers:
-
-        - name: ai-idp-platform
-
-          image: saksham8000/ai-idp-platform:latest
-
-          imagePullPolicy: Always
-
-          ports:
-            - containerPort: 8000
-
-          env:
-            - name: DATABASE_URL
-              value: "postgresql://platform:platform123@postgres-service.platform-system.svc.cluster.local:5432/platformdb"
+  ports:
+    - port: 8000
+      targetPort: 8000
+      nodePort: 30080
