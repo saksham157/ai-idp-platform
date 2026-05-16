@@ -46,7 +46,7 @@ spec:
 
         IMAGE_NAME = "saksham8000/ai-idp-platform"
 
-        IMAGE_TAG = "latest"
+        IMAGE_TAG = "${BUILD_NUMBER}"
     }
 
     stages {
@@ -94,6 +94,18 @@ spec:
             steps {
 
                 sh 'docker push ${IMAGE_NAME}:${IMAGE_TAG}'
+            }
+        }
+
+        stage('Update Values File') {
+
+            steps {
+
+                sh """
+
+sed -i 's/tag:.*/tag: "${IMAGE_TAG}"/' templates/values.yaml.j2
+
+"""
             }
         }
     }

@@ -22,7 +22,7 @@ spec:
 
         - name: ai-idp-platform
 
-          image: saksham8000/ai-idp-platform:latest
+          image: saksham8000/ai-idp-platform:1
 
           imagePullPolicy: Always
 
