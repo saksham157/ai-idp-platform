@@ -24,6 +24,8 @@ spec:
 
           image: saksham8000/ai-idp-platform:latest
 
+          imagePullPolicy: Always
+
           ports:
             - containerPort: 8000
 
