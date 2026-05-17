@@ -102,7 +102,7 @@ spec:
 
                 sh """
 
-sed -i "s|image:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|g" app/kubernetes/deployment.yaml
+sed -i "s|image:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|g" kubernetes/deployment.yaml
 
 cat app/kubernetes/deployment.yaml
 
