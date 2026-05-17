@@ -104,7 +104,7 @@ spec:
 
 sed -i "s|image:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|g" kubernetes/deployment.yaml
 
-cat app/kubernetes/deployment.yaml
+cat kubernetes/deployment.yaml
 
 """
             }
