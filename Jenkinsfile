@@ -97,16 +97,16 @@ spec:
             }
         }
 
-        stage('Update Values File') {
+       stage('Update Deployment File') {
 
-            steps {
+    steps {
 
-                sh """
+        sh """
 
-sed -i 's/tag:.*/tag: "${IMAGE_TAG}"/' templates/values.yaml.j2
+sed -i 's|IMAGE_TAG|${IMAGE_TAG}|g' kubernetes/deployment.yaml
 
 """
-            }
-        }
+    }
+}
     }
 }
