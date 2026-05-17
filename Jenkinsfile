@@ -35,7 +35,6 @@ spec:
     - name: docker-sock
 
       hostPath:
-
         path: /var/run/docker.sock
 
 """
@@ -97,16 +96,52 @@ spec:
             }
         }
 
-       stage('Update Deployment File') {
+        stage('Update Deployment File') {
 
-    steps {
+            steps {
 
-        sh """
+                sh """
 
-sed -i 's|IMAGE_TAG|${IMAGE_TAG}|g' kubernetes/deployment.yaml
+sed -i "s|image:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|g" app/kubernetes/deployment.yaml
+
+cat app/kubernetes/deployment.yaml
 
 """
-    }
-}
+            }
+        }
+
+        stage('Push Updated Manifest') {
+
+            steps {
+
+                withCredentials([
+                    usernamePassword(
+
+                        credentialsId: 'github-creds',
+
+                        usernameVariable: 'GIT_USER',
+
+                        passwordVariable: 'GIT_PASS'
+                    )
+                ]) {
+
+                    sh """
+
+git config --global --add safe.directory /home/jenkins/agent/workspace/ai-idp-deployment
+
+git config --global user.email "platform@local"
+
+git config --global user.name "jenkins"
+
+git add .
+
+git commit -m "update deployment image ${IMAGE_TAG}"
+
+git push https://${GIT_USER}:${GIT_PASS}@github.com/saksham157/ai-idp-platform.git HEAD:main
+
+"""
+                }
+            }
+        }
     }
 }
