@@ -1,468 +1,215 @@
-# AI-IDP Platform
+# platform-jenkins-base
+
+A production-grade Jenkins deployment running natively inside a Kubernetes cluster. This project sets up Jenkins as a Kubernetes-native CI/CD engine using the Kubernetes plugin for dynamic ephemeral build agents, webhook-based pipeline triggering, and customized pod templates configured in Jenkins Clouds.
+
+---
 
 ## Overview
 
-AI-IDP Platform is a cloud-native Internal Developer Platform (IDP) designed to automate service onboarding, CI/CD generation, GitOps deployment workflows, and developer experience using Kubernetes, Jenkins Shared Libraries, ArgoCD, PostgreSQL, and dynamic build agents.
+Traditional Jenkins deployments run as standalone servers with static agents that idle between builds. This project takes a cloud-native approach — Jenkins runs inside the cluster as a Kubernetes workload, and every build gets its own isolated, ephemeral agent pod that spins up on demand and is automatically terminated on completion.
 
-The goal of this project is to simulate how modern platform engineering teams build centralized developer platforms that reduce manual DevOps work for developers.
-
-Instead of every team maintaining separate CI/CD pipelines and deployment logic, this platform centralizes automation and standardizes workflows.
+Pipeline execution is triggered via GitHub webhooks, eliminating the need for polling and ensuring near-instant build starts on every push or pull request.
 
 ---
 
-# Problem Statement
-
-In many organizations:
-
-- Every repository contains different Jenkins pipelines
-- CI/CD logic becomes duplicated
-- Developers manually configure deployments
-- Kubernetes manifests become inconsistent
-- Security and deployment standards vary between teams
-- Platform teams struggle to maintain standardization
-
-AI-IDP Platform solves this by introducing:
-
-- Shared CI/CD pipelines
-- Metadata-driven onboarding
-- Dynamic build agents
-- GitOps deployment workflows
-- Centralized platform automation
-
----
-
-# Platform Architecture
+## Architecture
 
 ```text
-Developer Repository
-        │
-        │ platform.yaml
-        ▼
-Jenkins Shared Library
-(platform-shared-library)
+Developer pushes code
         │
         ▼
-Dynamic Jenkins Pipeline
-        │
-        ├── Build Application
-        ├── Run Tests
-        ├── Build Docker Image
-        └── Update Kubernetes Manifest
+GitHub Webhook
         │
         ▼
-GitHub Repository
+Jenkins Controller (Pod — inside Kubernetes)
         │
         ▼
-ArgoCD
+Kubernetes Plugin
+        │
+        ├── Reads pod template from Clouds configuration
+        ├── Provisions ephemeral agent pod in cluster
+        └── Assigns build to agent
         │
         ▼
-Kubernetes Cluster
+Ephemeral Agent Pod (runs pipeline steps)
+        │
+        ├── Build
+        ├── Test
+        ├── Docker image build & push
+        └── Update Helm chart / Kubernetes manifest
+        │
+        ▼
+Agent pod auto-deleted on completion
+        │
+        ▼
+ArgoCD detects manifest change in Git
+        │
+        ▼
+Kubernetes cluster synced → Application deployed
 ```
 
 ---
 
-# Core Components
+## Core Components
 
-## 1. AI-IDP Platform API
+### Jenkins Controller
 
-The main FastAPI backend responsible for:
+- Deployed as a Kubernetes `Deployment` inside the cluster
+- Exposed via a `Service` for internal access and webhook reception
+- Persistent volume attached for Jenkins home data
+- Configured with the Kubernetes plugin to communicate with the cluster API
 
-- Service onboarding
-- Metadata storage
-- Template generation
-- Jenkinsfile generation
-- Future AI-driven automation
+### Kubernetes Plugin
 
-### Tech Stack
+- Connects Jenkins to the Kubernetes API server
+- Dynamically provisions agent pods for each build using pod templates defined in **Manage Jenkins → Clouds**
+- No static agents — zero idle compute between builds
+- Each agent pod is isolated, preventing build contamination across pipelines
 
-- FastAPI
-- PostgreSQL
-- SQLAlchemy
-- Jinja2
-- Kubernetes
+### Webhook Triggering
 
----
+- GitHub webhooks point to the Jenkins controller service endpoint
+- Pipelines trigger immediately on `push`, `pull_request`, or tag events
+- No SCM polling configured — webhook-only triggering for efficiency and speed
 
-## 2. PostgreSQL Database
+### Pod Templates (Clouds Configuration)
 
-Stores platform metadata such as:
+Pod templates are defined in **Manage Jenkins → Clouds → Kubernetes** and customized per use case:
 
-- Service name
-- Team name
-- Runtime
-- Docker build configuration
-- Future deployment metadata
+| Template | Container Image | Purpose |
+|---|---|---|
+| `python-agent` | `python:3.12` | Python application builds and tests |
+| `node-agent` | `node:20` | Node.js application builds |
+| `maven-agent` | `maven:3.9.6-eclipse-temurin-17` | Java/Maven builds |
+| `docker-agent` | `docker:dind` | Docker image build and push |
 
-Example:
+Each template defines:
+- Container image and resource requests/limits
+- Environment variables
+- Volume mounts (e.g. Docker socket or registry credentials)
+- Node selector and tolerations where required
 
-```json
-{
-  "service_name": "payment-service",
-  "team_name": "payments",
-  "runtime": "python",
-  "docker_build": true
-}
-```
+### RBAC
 
----
+A dedicated `ServiceAccount` is bound to a `Role` granting Jenkins least-privilege access to:
+- `create`, `get`, `list`, `delete` pods in the agents namespace
+- `get` pod logs
+- `create` secrets (for credential injection)
 
-## 3. Platform Shared Library
-
-A centralized Jenkins Shared Library that contains reusable CI/CD logic.
-
-Instead of every repository maintaining large Jenkinsfiles, developers only use:
-
-```groovy
-@Library('platform-shared-library') _
-
-platformPipeline()
-```
-
-The shared library dynamically:
-
-- Reads metadata from platform.yaml
-- Selects runtime-specific build containers
-- Runs builds and tests
-- Builds Docker images
-- Standardizes CI/CD workflows
+Jenkins does not have cluster-wide permissions.
 
 ---
 
-## 4. Dynamic Jenkins Agents
-
-The platform dynamically creates Kubernetes-based Jenkins agents depending on application runtime.
-
-### Python Applications
-
-```yaml
-image: python:3.12
-```
-
-### NodeJS Applications
-
-```yaml
-image: node:20
-```
-
-### Java Applications
-
-```yaml
-image: maven:3.9.6-eclipse-temurin-17
-```
-
-This approach ensures:
-
-- Runtime isolation
-- Better scalability
-- Reduced dependency conflicts
-- Cloud-native CI/CD execution
-
----
-
-# GitOps Workflow
-
-The platform follows GitOps principles.
-
-## Workflow
-
-1. Developer pushes code
-2. GitHub webhook triggers Jenkins
-3. Jenkins Shared Library executes pipeline
-4. Docker image is built and pushed
-5. Kubernetes deployment manifests are updated
-6. GitHub repository receives manifest update
-7. ArgoCD detects Git changes
-8. Kubernetes cluster automatically syncs
-9. Application gets deployed
-
----
-
-# Dynamic Metadata Flow
-
-Each developer repository contains:
-
-```yaml
-platform.yaml
-```
-
-Example:
-
-```yaml
-platform:
-
-  language: python
-
-pipeline:
-
-  build: true
-
-  test: true
-
-  dockerBuild: true
-
-registry:
-
-  repository: saksham8000/payment-service
-
-docker:
-
-  imageTag: latest
-```
-
-The shared library reads this metadata and dynamically configures the CI/CD workflow.
-
----
-
-# AI Agent Workflow (Future Scope)
-
-Currently, AI automation is partially designed but not fully implemented.
-
-Future AI agents will:
-
-## 1. Repository Analysis Agent
-
-Automatically detect:
-
-- Runtime
-- Framework
-- Build system
-- Dependency manager
-
-Example:
-
-- requirements.txt → Python
-- pom.xml → Java
-- package.json → NodeJS
-
----
-
-## 2. Pipeline Generation Agent
-
-Generate:
-
-- Jenkinsfiles
-- Dockerfiles
-- Helm values
-- Kubernetes manifests
-
-based on repository structure.
-
----
-
-## 3. Deployment Recommendation Agent
-
-Suggest:
-
-- CPU limits
-- Memory limits
-- Replica count
-- Autoscaling configuration
-- Health probes
-
-using application profiling.
-
----
-
-## 4. Security Agent
-
-Future integration plans:
-
-- Image scanning
-- Secret detection
-- Dependency vulnerability analysis
-- Policy validation
-
----
-
-# API Endpoints
-
-## Create Service
-
-```http
-POST /service
-```
-
-Registers a new service in the platform database.
-
----
-
-## Get All Services
-
-```http
-GET /services
-```
-
-Returns all onboarded services.
-
----
-
-## Get Single Service
-
-```http
-GET /service/{service_id}
-```
-
-Returns metadata for a specific service.
-
----
-
-## Generate Values File
-
-```http
-GET /generate-values/{service_id}
-```
-
-Generates Helm values dynamically using Jinja2 templates.
-
----
-
-## Generate Jenkinsfile
-
-```http
-GET /generate-jenkinsfile/{service_id}
-```
-
-Generates platform-integrated Jenkinsfile.
-
----
-
-# Repository Structure
+## Repository Structure
 
 ```text
-ai-idp-platform/
-│
-├── app/
-│   ├── main.py
-│   ├── models.py
-│   ├── schema.py
-│   ├── database.py
-│   └── templates/
+platform-jenkins-base/
 │
 ├── kubernetes/
-│   ├── deployment.yaml
-│   ├── service.yaml
-│   └── postgres.yaml
+│   ├── namespace.yaml            # Dedicated namespace for Jenkins
+│   ├── serviceaccount.yaml       # Jenkins ServiceAccount
+│   ├── rbac.yaml                 # Role and RoleBinding
+│   ├── deployment.yaml           # Jenkins controller Deployment
+│   ├── service.yaml              # ClusterIP / NodePort / Ingress
+│   └── pvc.yaml                  # PersistentVolumeClaim for Jenkins home
 │
-├── Dockerfile
-├── requirements.txt
+├── pod-templates/
+│   ├── python-agent.yaml         # Python build agent template
+│   ├── node-agent.yaml           # Node.js build agent template
+│   ├── maven-agent.yaml          # Java/Maven build agent template
+│   └── docker-agent.yaml         # Docker-in-Docker agent template
+│
+├── configs/
+│   └── jenkins-casc.yaml         # Jenkins Configuration as Code (JCasC)
+│
 └── README.md
 ```
 
 ---
 
-# Example Developer Repository
+## How It Works
 
-```text
-payment-service/
-│
-├── app.py
-├── requirements.txt
-├── Dockerfile
-├── platform.yaml
-└── Jenkinsfile
+### 1. Jenkins Starts Inside Kubernetes
+
+Jenkins controller runs as a pod. On startup, the Kubernetes plugin reads the cluster credentials from the in-cluster `ServiceAccount` token — no manual kubeconfig needed.
+
+### 2. Webhook Fires on Code Push
+
+A GitHub webhook sends a `POST` request to the Jenkins controller endpoint. Jenkins identifies the matching pipeline job and queues a build immediately.
+
+### 3. Agent Pod Provisioned from Cloud Template
+
+Jenkins reads the matching pod template from **Clouds** configuration, submits a pod spec to the Kubernetes API, and waits for the agent pod to become `Running`.
+
+### 4. Build Executes Inside Agent Pod
+
+The pipeline steps run entirely inside the agent pod — isolated from other builds and from the Jenkins controller. Credentials are injected as environment variables or mounted secrets.
+
+### 5. Agent Pod Terminated
+
+On build completion (success or failure), the Kubernetes plugin deletes the agent pod. No manual cleanup required.
+
+### 6. ArgoCD Syncs Deployment
+
+If the pipeline updates a Kubernetes manifest or Helm values file in Git, ArgoCD detects the change and syncs the cluster automatically — completing the GitOps loop.
+
+---
+
+## Key Design Decisions
+
+**Webhook over polling** — SCM polling creates unnecessary API calls and adds latency. Webhooks give instant triggering and are more efficient at scale.
+
+**Clouds pod templates over Jenkinsfile agent blocks** — Defining templates centrally in Clouds keeps pipeline code clean and lets platform teams manage agent configurations independently of application repositories. Developers reference a template label; they don't own the container spec.
+
+**Ephemeral agents over persistent agents** — Static agents accumulate state, cached dependencies, and leftover artifacts from previous builds. Ephemeral pods start clean every time, eliminating an entire class of flaky build issues.
+
+**Least-privilege RBAC** — Jenkins only has permission to manage pods in its own namespace. It cannot modify deployments, services, or resources in other namespaces.
+
+---
+
+## Prerequisites
+
+- Kubernetes cluster (tested on EKS)
+- `kubectl` configured with cluster access
+- Helm (optional, for chart-based deployment)
+- GitHub repository with webhook access
+- Container registry credentials (Docker Hub, ECR, etc.)
+
+---
+
+## Deployment
+
+```bash
+# Create namespace
+kubectl apply -f kubernetes/namespace.yaml
+
+# Apply RBAC
+kubectl apply -f kubernetes/serviceaccount.yaml
+kubectl apply -f kubernetes/rbac.yaml
+
+# Create persistent volume claim
+kubectl apply -f kubernetes/pvc.yaml
+
+# Deploy Jenkins controller
+kubectl apply -f kubernetes/deployment.yaml
+kubectl apply -f kubernetes/service.yaml
 ```
 
-Jenkinsfile:
-
-```groovy
-@Library('platform-shared-library') _
-
-platformPipeline()
-```
+After Jenkins starts, configure the Kubernetes Cloud under **Manage Jenkins → Clouds → New Cloud → Kubernetes** and apply the pod templates from `pod-templates/`.
 
 ---
 
-# Platform Features
+## Webhook Setup
 
-- Dynamic Kubernetes Jenkins agents
-- Shared CI/CD library
-- Metadata-driven automation
-- GitOps deployment flow
-- Docker image automation
-- PostgreSQL metadata storage
-- FastAPI backend platform
-- Kubernetes-native architecture
-- ArgoCD integration
-- Runtime-aware pipelines
+1. In your GitHub repository, go to **Settings → Webhooks → Add webhook**
+2. Set the Payload URL to your Jenkins endpoint: `http://<jenkins-service>/github-webhook/`
+3. Set Content type to `application/json`
+4. Select the events to trigger on (`push`, `pull_request`, or specific events)
+5. In the Jenkins job, enable **GitHub hook trigger for GITScm polling** under Build Triggers
 
 ---
 
-# Current Limitations
+## Author
 
-- AI agents are partially designed
-- No autoscaling automation yet
-- No authentication layer
-- No RBAC implementation
-- No multi-cluster support
-- No secret management integration
-- Limited deployment strategies
-
----
-
-# Future Enhancements
-
-- AI-based service onboarding
-- Automatic Dockerfile generation
-- Automatic Helm chart generation
-- Terraform integration
-- Vault integration
-- Kubernetes policy engine
-- Cost optimization agent
-- Multi-cloud support
-- Self-service developer portal
-- AI troubleshooting assistant
-
----
-
-# Learning Outcomes
-
-This project demonstrates practical understanding of:
-
-- Platform Engineering
-- Kubernetes
-- Jenkins Shared Libraries
-- GitOps
-- ArgoCD
-- CI/CD automation
-- FastAPI backend development
-- PostgreSQL integration
-- Cloud-native architecture
-- Dynamic infrastructure workflows
-
----
-
-# How Other Repositories Use This Platform
-
-Every developer repository only needs:
-
-## 1. platform.yaml
-
-Contains metadata for the platform.
-
-## 2. Jenkinsfile
-
-```groovy
-@Library('platform-shared-library') _
-
-platformPipeline()
-```
-
-The platform automatically handles:
-
-- Build logic
-- Test logic
-- Docker build
-- Deployment automation
-- Runtime selection
-- CI/CD standards
-
-This reduces developer operational overhead and centralizes DevOps automation.
-
----
-
-# Author
-
-Saksham Singh Gehlot
-
-Cloud | DevOps | Platform Engineering Enthusiast
-
+Saksham Singh Gehlot — DevOps & Platform Engineer  
+[github.com/saksham157](https://github.com/saksham157)
